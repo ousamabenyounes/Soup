@@ -781,28 +781,44 @@ class TestDiskKindMeasuredFallback:
         assert result.kind == "hdd"
         assert result.measured_bps is None
 
+    def test_diskclassification_rejects_a_contradictory_pairing(self):
+        """#365 re-review follow-up: the coupling is now structural — a measured
+        rate that classifies differently from its kind cannot be constructed, so
+        the by-discipline gap (a hand-built 'hdd' + 2.0 GB/s rendering a
+        self-contradictory refusal) is closed at the type."""
+        import soup_cli.utils.layer_stream as ls
+
+        with pytest.raises(ValueError, match="must match its verdict"):
+            ls.DiskClassification("hdd", measured_bps=2.0e9)  # 2 GB/s is NVMe-class
+        # A matched pair and a rate-less (name/flag/override) verdict are both fine.
+        assert ls.DiskClassification("hdd", 150e6).kind == "hdd"
+        assert ls.DiskClassification("hdd", None).measured_bps is None
+
     def test_the_read_is_repeated_and_the_best_sample_wins(self, monkeypatch, tmp_path):
         """#411 review: the single-sample threshold is the weakness — repeat the
         read and keep the fastest so a lone cold sample cannot refuse a fast disk.
 
-        The filesystem I/O is mocked so the timing is deterministic regardless of
-        whether the test host's temp dir actually supports O_DIRECT."""
+        The filesystem I/O is mocked so the timing is deterministic and the test
+        runs on EVERY CI cell — #411 re-review: it must not skip on Windows, or
+        the worst-sample / first-sample / reset mutations survive a third of CI.
+        O_DIRECT and readv are Linux-only names, so both are injected with
+        raising=False rather than gating the test on the host having them."""
         import os
         import tempfile
         import time
 
         import soup_cli.utils.layer_stream as ls
 
-        if getattr(os, "O_DIRECT", None) is None:
-            pytest.skip("O_DIRECT is Linux-only; the probe returns None elsewhere")
-
+        # Inject the Linux-only names so the probe proceeds past its own
+        # O_DIRECT early-return and the readv patch lands on Windows too.
+        monkeypatch.setattr(os, "O_DIRECT", 0x4000, raising=False)
         scratch = str(tmp_path / "scratch")
         monkeypatch.setattr(tempfile, "mkstemp", lambda **_k: (123, scratch))
         monkeypatch.setattr(os, "write", lambda _fd, b: len(b))
         monkeypatch.setattr(os, "fsync", lambda _fd: None)
         monkeypatch.setattr(os, "close", lambda _fd: None)
         monkeypatch.setattr(os, "open", lambda _p, _flags: 456)
-        monkeypatch.setattr(os, "lseek", lambda _fd, _off, _whence: 0)
+        monkeypatch.setattr(os, "lseek", lambda _fd, _off, _whence: 0, raising=False)
         monkeypatch.setattr(os, "unlink", lambda _p: None)
         readv_calls = []
 
@@ -810,7 +826,7 @@ class TestDiskKindMeasuredFallback:
             readv_calls.append(1)
             return ls._MEASURE_READ_BYTES
 
-        monkeypatch.setattr(os, "readv", fake_readv)
+        monkeypatch.setattr(os, "readv", fake_readv, raising=False)
         # Three reads with elapsed 2s, 1s, 4s -> the 1s sample is the fastest.
         clock = iter([0.0, 2.0, 0.0, 1.0, 0.0, 4.0])
         monkeypatch.setattr(time, "monotonic", lambda: next(clock))

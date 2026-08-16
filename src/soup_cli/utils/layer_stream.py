@@ -245,8 +245,6 @@ DISK_KINDS = (_NVME, "ssd", "hdd", "unknown")
 #: A media type, or a thunk that determines one. ``choose_tier`` accepts the
 #: thunk form so the ~9 s Windows probe is paid only when the tier decision
 #: actually depends on the answer.
-DiskKind = Union[str, Callable[[], str]]
-
 @dataclass(frozen=True)
 class DiskClassification:
     """A disk verdict and, when the verdict was DERIVED from an O_DIRECT read,
@@ -264,6 +262,28 @@ class DiskClassification:
     kind: str
     measured_bps: Optional[float] = None
 
+    def __post_init__(self) -> None:
+        # Make the pairing structural, not merely a construction-site discipline
+        # (#365 re-review follow-up): a measured rate MUST classify to the same
+        # verdict it is paired with, so a refusal can never render a rate that
+        # contradicts its kind (e.g. 2.0 GB/s tagged 'hdd'). ``None`` (a
+        # name/flag/override verdict) carries no rate and is exempt.
+        if (
+            self.measured_bps is not None
+            and _classify_measured_read(self.measured_bps) != self.kind
+        ):
+            raise ValueError(
+                f"DiskClassification pairs kind={self.kind!r} with measured_bps="
+                f"{self.measured_bps} B/s, which classifies as "
+                f"{_classify_measured_read(self.measured_bps)!r}: a measured rate "
+                f"must match its verdict."
+            )
+
+
+# The callable ``choose_tier`` holds returns a DiskClassification (stream_setup's
+# lambda) or a bare kind string (explicit callers / tests); a plain string is
+# also accepted directly.
+DiskKind = Union[str, DiskClassification, Callable[[], Union[str, DiskClassification]]]
 
 _DISK_KIND_CACHE: Dict[str, DiskClassification] = {}
 
