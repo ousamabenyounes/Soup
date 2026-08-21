@@ -113,6 +113,9 @@ reproducing 70+ versions of notes.
 
 ### Fixed
 
+- **`soup runs replay` now keeps downsampled chart data within the configured hard cap while
+  preserving the first and final rows (#473 by @ousamabenyounes).**
+
 - **`cut_ce.py` and `liger.py` now normalize path separators and match architecture
   keywords on the last path component only (#456 by @harshitthek in #458).**
   On Windows, `rsplit("/")` never split on backslashes, causing parent directory

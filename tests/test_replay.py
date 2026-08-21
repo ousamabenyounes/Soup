@@ -69,23 +69,32 @@ class TestDownsample:
     def test_long_capped(self):
         rows = [_row(i, 2.0) for i in range(10_000)]
         out = downsample(rows, max_points=200)
-        assert len(out) <= 210  # MAX_POINTS + endpoint pin tolerance
+        assert len(out) <= 200
         assert out[0] == rows[0]
         assert out[-1] == rows[-1]
 
     def test_default_cap(self):
         rows = [_row(i, 2.0) for i in range(MAX_PLOT_POINTS * 4)]
         out = downsample(rows)
-        assert len(out) <= MAX_PLOT_POINTS + 5
+        assert len(out) <= MAX_PLOT_POINTS
 
     def test_stride_lands_on_last_row_no_duplicate_pin(self):
-        # 5 rows, max_points=2 -> stride = 5 // 2 = 2, so rows[::2] already
-        # ends on index 4 (the last row); the endpoint pin must not append a
-        # second copy (branch 80->82 in replay.py).
+        # The hard cap leaves one interval between two endpoint samples, so the
+        # stride lands on the final row and the endpoint pin must not duplicate it.
         rows = [_row(i, 2.0) for i in range(5)]
         out = downsample(rows, max_points=2)
-        assert out == [rows[0], rows[2], rows[4]]
+        assert out == [rows[0], rows[4]]
         assert out[-1] is rows[-1]
+
+    def test_boundary_shape_stays_within_hard_cap(self):
+        rows = [_row(i, 2.0) for i in range(6)]
+        out = downsample(rows, max_points=4)
+        assert out == [rows[0], rows[2], rows[4], rows[5]]
+        assert len(out) == 4
+
+    def test_one_point_budget_keeps_final_row(self):
+        rows = [_row(i, 2.0) for i in range(3)]
+        assert downsample(rows, max_points=1) == [rows[-1]]
 
     def test_zero_max_rejected(self):
         with pytest.raises(ValueError):

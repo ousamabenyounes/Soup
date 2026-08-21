@@ -74,7 +74,9 @@ def downsample(
     rows = list(metrics)
     if len(rows) <= max_points:
         return rows
-    stride = max(_MIN_STEP_DELTA, len(rows) // max_points)
+    if max_points == _MIN_STEP_DELTA:
+        return [rows[-1]]
+    stride = math.ceil((len(rows) - 1) / (max_points - 1))
     sampled = rows[::stride]
     # Always pin the last row so the final loss is visible.
     if sampled[-1] is not rows[-1]:
