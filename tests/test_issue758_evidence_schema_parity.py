@@ -259,6 +259,15 @@ def test_all_readers_refuse_the_same_malformed_corpus(
 
 
 _HOSTILE_EVIDENCE_VALUE = "\x1b[2J\x1b[31mPWNED-BY-EVIDENCE"
+_BOTH_QUOTES_SINGLE_DELIMITED_MESSAGE = (
+    r"evidence.benchmarks['a\'LEAKED-EVIDENCE-CONTENT\'b\"'] needs 'base' and 'tuned'"
+)
+_BOTH_QUOTES_DOUBLE_DELIMITED_MESSAGE = (
+    r"evidence.benchmarks['a\"LEAK2\"b\''] needs 'base' and 'tuned'"
+)
+_REDACTED_BENCHMARK_REQUIREMENTS = (
+    "evidence.benchmarks[<redacted>] needs <redacted> and <redacted> (ValueError)"
+)
 
 
 @pytest.mark.parametrize(
@@ -310,11 +319,20 @@ def test_mcp_refusals_do_not_echo_evidence_content(tmp_path, monkeypatch, payloa
         ("'only quoted'", "<redacted> (ValueError)"),
         ("", "invalid evidence (ValueError)"),
         ('evidence.task.mode; got "x"', "evidence.task.mode; got <redacted> (ValueError)"),
+        (_BOTH_QUOTES_SINGLE_DELIMITED_MESSAGE, _REDACTED_BENCHMARK_REQUIREMENTS),
+        (_BOTH_QUOTES_DOUBLE_DELIMITED_MESSAGE, _REDACTED_BENCHMARK_REQUIREMENTS),
         # `repr()` always balances its quotes, so the decoder cannot emit this
         # today — but the boundary must not fail open if one ever does.
         ("unterminated 'PWNED", "unterminated <redacted> (ValueError)"),
     ),
-    ids=("fully-quoted", "empty-message", "double-quoted", "unterminated-quote"),
+    ids=(
+        "fully-quoted",
+        "empty-message",
+        "double-quoted",
+        "escaped-single-quotes",
+        "escaped-double-quotes",
+        "unterminated-quote",
+    ),
 )
 def test_mcp_error_sanitizer_never_returns_an_empty_message(raw, expected):
     """A decoder message that is entirely quoted must not redact down to nothing."""

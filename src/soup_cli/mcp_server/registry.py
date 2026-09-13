@@ -549,12 +549,16 @@ def tool_diagnose_evidence(args: dict) -> dict:
 
 # The shared evidence decoder (#758) quotes the offending value with ``!r``/
 # ``repr()`` every time it echoes evidence-file content, and never quotes the
-# structural part of its message. So redacting every quoted run drops exactly
-# the untrusted half and keeps the schema path that says what was refused.
+# structural part of its message. The regex therefore tracks the delimiter and
+# consumes backslash-escaped characters inside it, so an escaped matching quote
+# cannot end the redaction early. Redacting each quoted run drops exactly the
+# untrusted half and keeps the schema path that says what was refused.
 # The trailing alternative redacts from an UNTERMINATED quote to end-of-string:
-# ``repr()`` always balances its quotes, so that cannot happen today, but a
-# boundary that fails open on one malformed message is the wrong default.
-_EVIDENCE_ERROR_QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"|['\"].*\Z", re.DOTALL)
+# the decoder cannot emit one through ``repr()`` today, but a boundary that
+# fails open on one malformed message is the wrong default.
+_EVIDENCE_ERROR_QUOTED = re.compile(
+    r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|['\"].*\Z", re.DOTALL
+)
 _EVIDENCE_ERROR_REDACTION = "<redacted>"
 
 
